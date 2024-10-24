@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/deno";
 import { PropsWithChildren } from "hono/jsx";
 import { stream } from "hono/streaming"
+import { getCookie, setCookie } from 'hono/cookie'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const render = async (c: any, component: any) => await (await c.html(component)).text()
@@ -53,11 +54,80 @@ interface Product
 	image_url: string
 }
 
+class Cart
+{
+	static FromContext(c: any)
+	{
+		return new Cart().parse(getCookie(c, 'cart') ?? "")
+	}
+
+	items: Record<string, number> = {}
+
+	get length()
+	{
+		return Object.entries(this.items).reduce((acc, [_, quantity]) => acc + quantity, 0)
+	}
+
+	add(slug: string, quantity: number)
+	{
+		this.items[slug] = (this.items[slug] || 0) + quantity
+		return this;
+	}
+
+	remove(slug: string, quantity: number)
+	{
+		this.items[slug] = Math.max(0, (this.items[slug] || 0) - quantity)
+		if(this.items[slug] <= 0)
+		{
+			delete this.items[slug]
+		}
+		return this;
+	}
+
+	get(slug: string)
+	{
+		return this.items[slug] || 0
+	}
+
+	adjust(slug: string, quantity: number)
+	{
+		this.items[slug] = quantity
+		if(this.items[slug] <= 0)
+		{
+			delete this.items[slug]
+		}
+		return this;
+	}
+
+	parse(cart?: string)
+	{
+		if(!cart) return this;
+		const items = cart.split(',')
+		for(let i = 0; i < items.length; i += 2)
+		{
+			this.items[items[i]] = parseInt(items[i + 1])
+		}
+		return this;
+	}
+
+	stringify()
+	{
+		for(const [slug, quantity] of Object.entries(this.items))
+		{
+			if(quantity <= 0)
+			{
+				delete this.items[slug]
+			}
+		}
+		return Object.entries(this.items).map(([slug, quantity]) => `${slug},${quantity}`).join(',')
+	}
+}
+
 /***********************************************************
     Static shell
 ************************************************************/
 
-const Shell = (p: PropsWithChildren<{ meta: any }>) => (
+const Shell = (p: PropsWithChildren<{ meta: any, cart: Cart }>) => (
 	<html lang="en">
 		<head>
 			<meta charset="utf-8"/>
@@ -71,7 +141,7 @@ const Shell = (p: PropsWithChildren<{ meta: any }>) => (
 			<template id="lol" shadowrootmode="open">
 				<div id="loader" className="loader"/>
 				<link rel="stylesheet" href="/styles.css"/>
-				<Header/>
+				<Header cart={p.cart}/>
 				<main>
 					<slot name="main"/>
 				</main>
@@ -100,7 +170,7 @@ export const DefaultLayout = async (props: PropsWithChildren) => {
 	)
 }
 
-export const Header = () => {
+export const Header = (props: { cart: Cart }) => {
 	return (
 		<header class="header-root">
 			<a preload={"eager"} href="/" class="logo">VanillaMaster</a>
@@ -109,6 +179,7 @@ export const Header = () => {
 			</product-search>
 			<div class="menu-wrapper">
 				<a class="order-link">ORDER</a>
+				<span>{props.cart.length}</span>
 				<a class="order-history-link">ORDER HISTORY</a>
 			</div>
 		</header>
@@ -277,7 +348,8 @@ export const ProductPage = async (props: { product: string }) => {
 					<p>{product.data.description}</p>
 				</div>
 				<p class="price">${product.data.price}</p>
-				<form class="cart-form" method="post" action={"/cart/add/" + product.data.slug}>
+				<form class="cart-form" method="post" action={"/cart/add"}>
+					<input hidden name={"slug"} value={product.data.slug}/>
 					<button class="add-to-cart">Add to cart</button>
 				</form>
 				<div class="related">
@@ -299,6 +371,44 @@ export const ProductPage = async (props: { product: string }) => {
 }
 
 /***********************************************************
+    Cart Page
+************************************************************/
+
+function CartPage(props: { cart: Cart })
+{
+	return (
+		<DefaultLayout>
+			<div class="cart-page">
+				<h2>Cart</h2>
+				<ul>
+					{Object.entries(props.cart.items).map(([slug, quantity]) => (
+						<li>
+							<p>{slug}</p>
+							<p>{quantity}</p>
+							<form method="post" action="/cart/adjust">
+								<input hidden name="slug" value={slug}/>
+								<input hidden type="number" name="quantity" value={quantity + 1}/>
+								<button>+</button>
+							</form>
+							<form method="post" action="/cart/adjust">
+								<input hidden name="slug" value={slug}/>
+								<input hidden type="number" name="quantity" value={Math.max(0, quantity - 1)}/>
+								<button>-</button>
+							</form>
+							<form method="post" action="/cart/remove">
+								<input hidden name="slug" value={slug}/>
+								<input hidden name="quantity" value={quantity}/>
+								<button>Remove</button>
+							</form>
+						</li>
+					))}
+				</ul>
+			</div>
+		</DefaultLayout>
+	)
+}
+
+/***********************************************************
     Application instantiation.
  ************************************************************/
 
@@ -309,7 +419,7 @@ app.get("/", (c) => {
 	const meta = {}
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
-		s.write(await render(c, <Shell meta={meta}></Shell>));
+		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
 		s.write(await render(c, <HomePage/>));
 	});
 });
@@ -317,25 +427,25 @@ app.get("/", (c) => {
 app.get("/products/:category/:subcategory", (c) =>
 {
 	const meta = {}
-	return c.html(<Shell meta={meta}><SubcategoryPage subcategory={c.req.param("subcategory")} /></Shell>)
+	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><SubcategoryPage subcategory={c.req.param("subcategory")} /></Shell>)
 });
 
 app.get("/products/:category", (c) =>
 {
 	const meta = {}
-	return c.html(<Shell meta={meta}><CategoryPage category={c.req.param("category")} /></Shell>)
+	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><CategoryPage category={c.req.param("category")} /></Shell>)
 });
 
 app.get("/collections/:collection", (c) =>
 {
 	const meta = {}
-	return c.html(<Shell meta={meta}><CollectionPage collection={c.req.param("collection")} /></Shell>)
+	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><CollectionPage collection={c.req.param("collection")} /></Shell>)
 });
 
 app.get("/product/:product", (c) =>
 {
 	const meta = {}
-	return c.html(<Shell meta={meta}><ProductPage product={c.req.param("product")} /></Shell>)
+	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><ProductPage product={c.req.param("product")} /></Shell>)
 });
 
 app.get("/search/:query", async (c) =>
@@ -366,6 +476,53 @@ app.get("/search/:query", async (c) =>
 		console.error('Unexpected error:', error);
 		return c.json({ data: null, error });
 	}
+})
+
+app.post("/cart/add", async (c) => {
+	const cart = getCookie(c, 'cart')
+	const formData = await c.req.parseBody()
+	const slug = String(formData.slug)
+	const quantity = Number(formData.quantity ?? '1')
+	const cartObj = new Cart()
+	cartObj.parse(cart)
+	cartObj.add(slug, quantity)
+	setCookie(c, "cart", cartObj.stringify())
+	return c.redirect("/cart")
+})
+
+app.post("/cart/remove", async (c) => {
+	const cart = getCookie(c, 'cart')
+	const formData = await c.req.parseBody()
+	const slug = String(formData.slug)
+	const quantity = Number(formData.quantity ?? '1')
+	const cartObj = new Cart()
+	cartObj.parse(cart)
+	cartObj.remove(slug, quantity)
+	setCookie(c, "cart", cartObj.stringify())
+	return c.redirect("/cart")
+})
+
+app.post("/cart/adjust", async (c) => {
+	const cart = getCookie(c, 'cart')
+	const formData = await c.req.parseBody()
+	const slug = String(formData.slug)
+	const quantity = Number(formData.quantity ?? '1')
+	const cartObj = new Cart()
+	cartObj.parse(cart)
+	cartObj.adjust(slug, quantity)
+	setCookie(c, "cart", cartObj.stringify())
+	return c.redirect("/cart")
+})
+
+app.get("/cart", (c) => {
+	const cart = getCookie(c, 'cart')
+	if(!cart){
+		setCookie(c, "cart", "")
+	}
+	const cartObj = new Cart()
+	cartObj.parse(cart)
+	const meta = {}
+	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><CartPage cart={cartObj}/></Shell>)
 })
 
 app.use("/client.js", serveStatic({ path: "./client.js" }));

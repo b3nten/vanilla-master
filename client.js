@@ -355,3 +355,37 @@ class SearchElement extends HTMLElement
 }
 
 if(!customElements.get("product-search")) customElements.define("product-search", SearchElement);
+
+class CartManager
+{
+	localCart;
+
+	addOptimisticCartLine()
+	{
+
+	}
+
+	removeOptimisticCartLine()
+	{
+
+	}
+
+	modifyOptimisticCartLine()
+	{
+
+	}
+
+	updateCartIndicator()
+	{
+
+	}
+}
+
+/*
+	Cart flow
+	// post to /cart, will return a response with cart data
+	// intercept the response, make fetch request instead, and optimistically update the caert
+
+ */
+
+const cart = new CartManager;

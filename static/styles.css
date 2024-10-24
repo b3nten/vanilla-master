@@ -371,9 +371,8 @@ main {
         background-color: var(--primary-color);
         color: white;
         border: none;
-        /*cursor: pointer;*/
+        cursor: pointer;
         transition: all .1s;
-        pointer-events: none;
 
         &:hover {
             background-color: rgba(from var(--primary-color) r g b / .75 );
