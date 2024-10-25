@@ -64,6 +64,7 @@ a {
 
 a.hoverable {
     padding: 2px;
+
     &:hover {
         background-color: rgba(from var(--primary-color) r g b / .1 );
     }
@@ -320,21 +321,6 @@ main {
 
     }
 }
-
-/*
-			<section class="product-page">
-				<h1 class="title">{product.data.name}</h1>
-				<div class="image-description">
-					<img src={product.data.image_url} loading="eager" />
-					<p>{product.data.description}</p>
-				</div>
-				<p class="price">{product.data.price}</p>
-				<form class="cart-form" method="post" action={"/cart/add/" + product.data.slug}>
-					<button class="add-to-cart">Add to cart</button>
-				</form>
-				<div class="related"
-
- */
 
 .product-page {
 

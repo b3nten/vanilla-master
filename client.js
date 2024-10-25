@@ -33,21 +33,19 @@ function debounce(func, timeout = 300){
 	}
 }
 
-const tick = (callback) => setTimeout(() => requestAnimationFrame(callback));
-
 const randomRange = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
 
 class Task {
 	constructor(task)
 	{
 		let rejected = false;
+
 		const { promise, resolve, reject } = Promise.withResolvers();
+
 		this.#promise = promise;
 		this.#reject = reject;
-		if (!rejected)
-		{
-			task().then(resolve, reject)
-		}
+
+		if (!rejected) task().then(resolve, reject)
 	}
 
 	then(...args) { return this.#promise.then(...args); }
@@ -66,13 +64,6 @@ class LoadingIndicator extends HTMLElement
 
 	static observedAttributes = ['background-color'];
 
-	attributeChangedCallback(name, oldValue, newValue) {
-		if(name === "background-color")
-		{
-			this.style.backgroundColor = newValue;
-		}
-	}
-
 	static BeginLoading()
 	{
 		window.dispatchEvent(new Event("begin-loading"));
@@ -84,6 +75,13 @@ class LoadingIndicator extends HTMLElement
 	}
 
 	tasks = []
+
+	attributeChangedCallback(name, oldValue, newValue) {
+		if(name === "background-color")
+		{
+			this.style.backgroundColor = newValue;
+		}
+	}
 
 	beginLoading = () =>
 	{
@@ -172,7 +170,6 @@ if(!customElements.get("loading-indicator")) customElements.define("loading-indi
 
 /***********************************************************
     Morpher
- 	* Uses idiomorph for prefetching links and images and morphing the page
 ************************************************************/
 
 class Morpher
@@ -196,7 +193,6 @@ class Morpher
 	}
 
 	mutationObserver;
-
 	intersectObserver;
 
 	getFromCache(url)
@@ -233,7 +229,6 @@ class Morpher
 				LoadingIndicator.BeginLoading();
 
 				const url = element.href;
-
 				history.pushState({ url }, "", url);
 
 				const response = await this.getFromCache(url);
@@ -269,8 +264,12 @@ class Morpher
 		{
 			if(img.getAttribute("preload") === "eager")
 			{
-				new Image().src = img.src;
+				const image = new Image;
+				image.decoding = "async";
+				image.fetchPriority = "low";
+				image.src = img.src;
 			}
+
 		}
 	}
 
@@ -352,14 +351,8 @@ class SearchElement extends HTMLElement
 	{
 		this.value = this.input.value;
 
-		if(this.value.length < 3)
-		{
-			this.dropdown.innerHTML = "Search products...";
-		}
-		else
-		{
-			this.fetchFromServer();
-		}
+		if(this.value.length < 3) this.dropdown.innerHTML = "Search products...";
+		else this.fetchFromServer();
 	}
 
 	fetchFromServer = async () =>
@@ -382,7 +375,9 @@ class SearchElement extends HTMLElement
 			}
 
 			this.results = results;
+
 			this.dropdown.innerHTML = this.results.map(r => `<a preload class="search-result hoverable" href="/product/${r.slug}">${r.name}</a>`).join("")
+
 			for(const link of this.dropdown.getElementsByTagName("a"))
 			{
 				morpher.registerLink(link);
@@ -474,11 +469,9 @@ export class SetTitle extends HTMLElement
 {
 	static observedAttributes = ['title'];
 
-	attributeChangedCallback(name, oldValue, newValue) {
-		if(name === "title")
-		{
-			document.title = newValue;
-		}
+	attributeChangedCallback(name, oldValue, newValue)
+	{
+		if(name === "title") document.title = newValue;
 	}
 }
 
