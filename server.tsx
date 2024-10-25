@@ -68,16 +68,17 @@ class Cart
 		return Object.entries(this.items).reduce((acc, [_, quantity]) => acc + quantity, 0)
 	}
 
-	add(slug: string, quantity: number)
+	add(slug: string, quantity: number = 1)
 	{
 		this.items[slug] = (this.items[slug] || 0) + quantity
 		return this;
 	}
 
-	remove(slug: string, quantity: number)
+	remove(slug: string, quantity?: number)
 	{
-		this.items[slug] = Math.max(0, (this.items[slug] || 0) - quantity)
-		if(this.items[slug] <= 0)
+		const q = quantity ?? this.items[slug]
+		this.items[slug] = Math.max(0, (this.items[slug] || 0) - q)
+		if(this.items[slug] <= 0 || Number.isNaN(this.items[slug]))
 		{
 			delete this.items[slug]
 		}
@@ -89,16 +90,6 @@ class Cart
 		return this.items[slug] || 0
 	}
 
-	adjust(slug: string, quantity: number)
-	{
-		this.items[slug] = quantity
-		if(this.items[slug] <= 0)
-		{
-			delete this.items[slug]
-		}
-		return this;
-	}
-
 	parse(cart?: string)
 	{
 		if(!cart) return this;
@@ -107,19 +98,26 @@ class Cart
 		{
 			this.items[items[i]] = parseInt(items[i + 1])
 		}
+
 		return this;
 	}
 
 	stringify()
 	{
-		for(const [slug, quantity] of Object.entries(this.items))
+		for(const slug of Object.values(this.items))
 		{
-			if(quantity <= 0)
+			if(this.items[slug] <= 0 || Number.isNaN(this.items[slug]))
 			{
 				delete this.items[slug]
 			}
 		}
 		return Object.entries(this.items).map(([slug, quantity]) => `${slug},${quantity}`).join(',')
+	}
+
+	async getProducts()
+	{
+		const products = await supabase.from("products").select("slug,name,price,image_url").in("slug", Object.keys(this.items))
+		return products.data
 	}
 }
 
@@ -138,17 +136,18 @@ const Shell = (p: PropsWithChildren<{ meta: any, cart: Cart }>) => (
 			<script src="/worker.js" type="module" defer></script>
 		</head>
 		<body>
-			<template id="lol" shadowrootmode="open">
-				<div id="loader" className="loader"/>
+			<template shadowrootmode="open">
 				<link rel="stylesheet" href="/styles.css"/>
-				<Header cart={p.cart}/>
+				<loading-indicator background-color={"var(--primary-color)"}/>
+				<slot name="header"/>
 				<main>
 					<slot name="main"/>
 				</main>
-				<Footer/>
+				<slot name="footer"/>
 			</template>
 		</body>
-		{p.children}
+		<Header cart={p.cart}/>
+		<Footer/>
 	</html>
 )
 
@@ -172,15 +171,14 @@ export const DefaultLayout = async (props: PropsWithChildren) => {
 
 export const Header = (props: { cart: Cart }) => {
 	return (
-		<header class="header-root">
+		<header slot="header" class="header-root">
 			<a preload={"eager"} href="/" class="logo">VanillaMaster</a>
 			<product-search>
 				<input class="search" placeholder="Search..."></input>
 			</product-search>
 			<div class="menu-wrapper">
-				<a class="order-link">ORDER</a>
-				<span>{props.cart.length}</span>
-				<a class="order-history-link">ORDER HISTORY</a>
+				<a href={"/cart"} class="order-link">CART</a>
+				<span id="cart-indicator">{props.cart.length}</span>
 			</div>
 		</header>
 	)
@@ -188,7 +186,7 @@ export const Header = (props: { cart: Cart }) => {
 
 export const Footer = () => {
 	return (
-		<footer>
+		<footer slot="footer">
 			<ul>
 				<li>Home</li>
 				<li>Location</li>
@@ -339,19 +337,22 @@ export const SubcategoryPage = async (props: { subcategory: string }) => {
 export const ProductPage = async (props: { product: string }) => {
 	const product = (await supabase.from("products").select("*").eq("slug", props.product).single()) as { data: Product }
 	const relatedProducts = await supabase.from("products").select("*").neq("slug", props.product).limit(6)
+	if(!product.data) return <DefaultLayout><h1>Product not found</h1></DefaultLayout>
 	return (
 		<DefaultLayout>
 			<section class="product-page">
-				<h1 class="title">{product.data.name}</h1>
+				<h1 class="title">{product?.data?.name}</h1>
 				<div class="image-description">
 					<img width={350} height={350} src={product.data.image_url} loading="eager" />
 					<p>{product.data.description}</p>
 				</div>
 				<p class="price">${product.data.price}</p>
-				<form class="cart-form" method="post" action={"/cart/add"}>
-					<input hidden name={"slug"} value={product.data.slug}/>
-					<button class="add-to-cart">Add to cart</button>
-				</form>
+				<add-to-cart>
+					<form className="cart-form" method="post" action={"/cart/add"}>
+						<input hidden name={"slug"} value={product.data.slug}/>
+						<button className="add-to-cart">Add to cart</button>
+					</form>
+				</add-to-cart>
 				<div class="related">
 					<h3>Explore more Products</h3>
 					<ul class='grid'>
@@ -374,32 +375,37 @@ export const ProductPage = async (props: { product: string }) => {
     Cart Page
 ************************************************************/
 
-function CartPage(props: { cart: Cart })
+async function CartPage(props: { cart: Cart })
 {
+	const products = await props.cart.getProducts();
 	return (
 		<DefaultLayout>
 			<div class="cart-page">
 				<h2>Cart</h2>
 				<ul>
-					{Object.entries(props.cart.items).map(([slug, quantity]) => (
-						<li>
-							<p>{slug}</p>
-							<p>{quantity}</p>
-							<form method="post" action="/cart/adjust">
-								<input hidden name="slug" value={slug}/>
-								<input hidden type="number" name="quantity" value={quantity + 1}/>
-								<button>+</button>
-							</form>
-							<form method="post" action="/cart/adjust">
-								<input hidden name="slug" value={slug}/>
-								<input hidden type="number" name="quantity" value={Math.max(0, quantity - 1)}/>
-								<button>-</button>
-							</form>
-							<form method="post" action="/cart/remove">
-								<input hidden name="slug" value={slug}/>
-								<input hidden name="quantity" value={quantity}/>
-								<button>Remove</button>
-							</form>
+					{products?.map((product: any) => (
+						<li class="product">
+							<img width={100} height={100} src={product.image_url} alt={product.name}/>
+							<div class='product-content'>
+								<a preload href={"/product/" + product.slug}>{product.name}</a>
+								<p>{props.cart.get(product.slug)} · ${(product.price * props.cart.get(product.slug)).toFixed(2)}</p>
+								<div class="forms">
+									<form method="post" action="/cart/add">
+										<input hidden name="slug" value={product.slug}/>
+										<input hidden type="number" name="quantity" value={1}/>
+										<button>➕</button>
+									</form>
+									<form method="post" action="/cart/remove">
+										<input hidden name="slug" value={product.slug}/>
+										<input hidden type="number" name="quantity" value={1}/>
+										<button>➖</button>
+									</form>
+									<form method="post" action="/cart/remove">
+										<input hidden name="slug" value={product.slug}/>
+										<button>🗑</button>
+									</form>
+								</div>
+							</div>
 						</li>
 					))}
 				</ul>
@@ -415,7 +421,6 @@ function CartPage(props: { cart: Cart })
 const app = new Hono();
 
 app.get("/", (c) => {
-	// get meta info
 	const meta = {}
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
@@ -424,41 +429,52 @@ app.get("/", (c) => {
 	});
 });
 
-app.get("/products/:category/:subcategory", (c) =>
-{
+app.get("/products/:category/:subcategory", (c) => {
 	const meta = {}
-	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><SubcategoryPage subcategory={c.req.param("subcategory")} /></Shell>)
+	return stream(c, async s => {
+		s.write("<!DOCTYPE html>");
+		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
+		s.write(await render(c, <SubcategoryPage subcategory={c.req.param("subcategory")} />));
+	})
 });
 
 app.get("/products/:category", (c) =>
 {
 	const meta = {}
-	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><CategoryPage category={c.req.param("category")} /></Shell>)
+	return stream(c, async s => {
+		s.write("<!DOCTYPE html>");
+		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
+		s.write(await render(c, <CategoryPage category={c.req.param("category")} />));
+	})
 });
 
 app.get("/collections/:collection", (c) =>
 {
 	const meta = {}
-	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><CollectionPage collection={c.req.param("collection")} /></Shell>)
+	return stream(c, async s => {
+		s.write("<!DOCTYPE html>");
+		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
+		s.write(await render(c, <CollectionPage collection={c.req.param("collection")} />));
+	})
 });
 
 app.get("/product/:product", (c) =>
 {
 	const meta = {}
-	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><ProductPage product={c.req.param("product")} /></Shell>)
+	return stream(c, async s => {
+		s.write("<!DOCTYPE html>");
+		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
+		s.write(await render(c, <ProductPage product={c.req.param("product")} />));
+	})
 });
 
 app.get("/search/:query", async (c) =>
 {
-	await new Promise((resolve) => setTimeout(resolve, 500));
 	try {
-		// Clean and prepare the search query
 		const cleanQuery = c.req.param('query').trim().replace(/\s+/g, ' & ');
 
-		// If query is empty, return early
-		if (!cleanQuery) {
-			return c.json({ data: [], error: null });
-		}
+		if (!cleanQuery) return c.json({ data: [], error: null });
+
 
 		// Perform the search with multiple approaches and combine results
 		const { data, error } = await supabase
@@ -478,51 +494,44 @@ app.get("/search/:query", async (c) =>
 	}
 })
 
-app.post("/cart/add", async (c) => {
-	const cart = getCookie(c, 'cart')
-	const formData = await c.req.parseBody()
-	const slug = String(formData.slug)
-	const quantity = Number(formData.quantity ?? '1')
-	const cartObj = new Cart()
-	cartObj.parse(cart)
-	cartObj.add(slug, quantity)
-	setCookie(c, "cart", cartObj.stringify())
-	return c.redirect("/cart")
+app.post("/cart/add", async (c) =>
+{
+	const cart = getCookie(c, 'cart');
+	const formData = await c.req.parseBody();
+	const slug = String(formData.slug);
+	const quantity = Number(formData.quantity ?? '1');
+	const cartObj = new Cart();
+	cartObj.parse(cart);
+	cartObj.add(slug, quantity);
+	setCookie(c, "cart", cartObj.stringify());
+	if(c.req.header("x-wants-json") === "please") return c.json({ success: true, cart: cartObj.items });
+	else return c.redirect("/cart");
 })
 
-app.post("/cart/remove", async (c) => {
-	const cart = getCookie(c, 'cart')
-	const formData = await c.req.parseBody()
-	const slug = String(formData.slug)
-	const quantity = Number(formData.quantity ?? '1')
-	const cartObj = new Cart()
-	cartObj.parse(cart)
-	cartObj.remove(slug, quantity)
-	setCookie(c, "cart", cartObj.stringify())
-	return c.redirect("/cart")
-})
-
-app.post("/cart/adjust", async (c) => {
-	const cart = getCookie(c, 'cart')
-	const formData = await c.req.parseBody()
-	const slug = String(formData.slug)
-	const quantity = Number(formData.quantity ?? '1')
-	const cartObj = new Cart()
-	cartObj.parse(cart)
-	cartObj.adjust(slug, quantity)
-	setCookie(c, "cart", cartObj.stringify())
-	return c.redirect("/cart")
+app.post("/cart/remove", async (c) =>
+{
+	const cart = getCookie(c, 'cart');
+	const formData = await c.req.parseBody();
+	const slug = String(formData.slug);
+	const quantity = Number(formData.quantity);
+	const cartObj = new Cart();
+	cartObj.parse(cart);
+	cartObj.remove(slug, quantity);
+	setCookie(c, "cart", cartObj.stringify());
+	if(c.req.header("x-wants-json") === "please") return c.json({ success: true, cart: cartObj.items });
+	else return c.redirect("/cart");
 })
 
 app.get("/cart", (c) => {
 	const cart = getCookie(c, 'cart')
-	if(!cart){
-		setCookie(c, "cart", "")
-	}
-	const cartObj = new Cart()
-	cartObj.parse(cart)
+	if(!cart) setCookie(c, "cart", "")
+	const cartObj = new Cart().parse(cart)
 	const meta = {}
-	return c.html(<Shell cart={Cart.FromContext(c)} meta={meta}><CartPage cart={cartObj}/></Shell>)
+	return stream(c, async s => {
+		s.write("<!DOCTYPE html>");
+		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
+		s.write(await render(c, <CartPage cart={cartObj}/>));
+	})
 })
 
 app.use("/client.js", serveStatic({ path: "./client.js" }));

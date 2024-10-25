@@ -119,8 +119,6 @@ a.hoverable {
         line-height: 1.125;
 
         & > * {
-            cursor: not-allowed;
-
             &:hover {
                 text-decoration: underline;
             }
@@ -423,4 +421,46 @@ main {
 .search-result {
     display: block;
     padding: .5rem;
+}
+
+.cart-page {
+
+    & li {
+        list-style: none;
+    }
+
+    & > ul {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+        margin-top: 3rem;
+    }
+
+    .product {
+        cursor: pointer;
+        display: flex;
+    }
+
+    .product-content {
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .forms {
+        display: flex;
+        flex-direction: row;
+        gap: .25rem;
+        & button {
+            padding: .125rem;
+            width: 32px;
+            height: 32px;
+            font-size: 1.25rem;
+            font-family: sans-serif;
+            color: var(--primary-color);
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+        }
+    }
 }

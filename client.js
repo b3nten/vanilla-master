@@ -33,6 +33,10 @@ function debounce(func, timeout = 300){
 	}
 }
 
+const tick = (callback) => setTimeout(() => requestAnimationFrame(callback));
+
+const randomRange = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
+
 class Task {
 	constructor(task)
 	{
@@ -57,6 +61,115 @@ class Task {
 	#promise;
 }
 
+class LoadingIndicator extends HTMLElement
+{
+
+	static observedAttributes = ['background-color'];
+
+	attributeChangedCallback(name, oldValue, newValue) {
+		if(name === "background-color")
+		{
+			this.style.backgroundColor = newValue;
+		}
+	}
+
+	static BeginLoading()
+	{
+		window.dispatchEvent(new Event("begin-loading"));
+	}
+
+	static EndLoading()
+	{
+		window.dispatchEvent(new Event("end-loading"));
+	}
+
+	tasks = []
+
+	beginLoading = () =>
+	{
+		this.style.transition = "all 0.001s";
+		this.style.opacity = "1";
+		this.style.transform = "scaleX(0)";
+
+		this.tasks.push(
+			setTimeout(() =>{
+				this.style.transition = "all 1s";
+				this.style.transform = "scaleX(.4)";
+				this.style.opacity = "1";
+			}, 50),
+			setTimeout(() => {
+				this.style.transition = "all .5s";
+				this.style.transform = "scaleX(.6)";
+			}, randomRange(500, 900)),
+			setTimeout(() => {
+				this.style.transform = "scaleX(.7)";
+			}, randomRange(1000, 1500)),
+			setTimeout(() => {
+				this.style.transform = "scaleX(.8)";
+			}, randomRange(2500, 3500)),
+			setTimeout(() => {
+				this.style.transform = "scaleX(.85)";
+			}, randomRange(4000, 5000)),
+			setTimeout(() => {
+				this.style.transform = "scaleX(.9)";
+			}, randomRange(6000, 7000)),
+		)
+	}
+
+	endLoading = () =>
+	{
+		this.#clearTasks();
+		this.tasks.push(
+			setTimeout(() =>
+			{
+				this.style.transition = "all .75s ease";
+				this.style.transform = "scaleX(1)";
+			}, 100),
+			setTimeout(() => {
+				this.style.opacity = "0";
+			}, 300)
+		)
+	}
+
+	connectedCallback()
+	{
+		this.#createStyles();
+		window.addEventListener("begin-loading", this.beginLoading);
+		window.addEventListener("end-loading", this.endLoading);
+	}
+
+	disconnectedCallback()
+	{
+		window.removeEventListener("begin-loading", this.beginLoading);
+		window.removeEventListener("end-loading", this.endLoading);
+	}
+
+	#tasks = [];
+
+	#clearTasks()
+	{
+		this.tasks.forEach(clearTimeout)
+		this.tasks.length = 0;
+	}
+
+	#createStyles()
+	{
+		this.style.position = "fixed";
+		this.style.top = "0";
+		this.style.left = "0";
+		this.style.width = "100%";
+		this.style.height = "5px";
+		this.style.backgroundColor = "black";
+		this.style.transition = "all 1s";
+		this.style.transform = "scaleX(1)";
+		this.style.transformOrigin = "left";
+		this.style.opacity = "0";
+		this.id = "loader";
+	}
+}
+
+if(!customElements.get("loading-indicator")) customElements.define("loading-indicator", LoadingIndicator);
+
 /***********************************************************
     Morpher
  	* Uses idiomorph for prefetching links and images and morphing the page
@@ -69,8 +182,10 @@ class Morpher
 	static Preload(url)
 	{
 		if(Morpher.s_PageCache.has(url)) return Morpher.s_PageCache.get(url);
+
 		Morpher.s_PageCache.set(url, fetch(url, { headers: { "x-morphframe": 'true' }})
 			.then(response => response.text()));
+
 		return Morpher.s_PageCache.get(url);
 	}
 
@@ -83,10 +198,6 @@ class Morpher
 	mutationObserver;
 
 	intersectObserver;
-
-	loader;
-
-	loaderTimeouts = [];
 
 	getFromCache(url)
 	{
@@ -119,40 +230,11 @@ class Morpher
 
 				e.preventDefault();
 
+				LoadingIndicator.BeginLoading();
+
 				const url = element.href;
 
 				history.pushState({ url }, "", url);
-
-				this.loaderTimeouts.forEach(clearTimeout);
-				this.loaderTimeouts.length = 0;
-
-				this.loader.style.transition = "all 0.001s";
-				this.loader.style.opacity = "1";
-				this.loader.style.transform = "scaleX(0)";
-
-				this.loaderTimeouts.push(
-					setTimeout(() =>{
-						this.loader.style.transition = "all 1s";
-						this.loader.style.transform = "scaleX(.4)";
-						this.loader.style.opacity = "1";
-					}, 50),
-					setTimeout(() => {
-						this.loader.style.transition = "all .5s";
-						this.loader.style.transform = "scaleX(.6)";
-					}, 750),
-					setTimeout(() => {
-						this.loader.style.transform = "scaleX(.7)";
-					}, 1500),
-					setTimeout(() => {
-						this.loader.style.transform = "scaleX(.8)";
-					}, 3000),
-					setTimeout(() => {
-						this.loader.style.transform = "scaleX(.85)";
-					}, 4500),
-					setTimeout(() => {
-						this.loader.style.transform = "scaleX(.9)";
-					}, 6000),
-				)
 
 				const response = await this.getFromCache(url);
 
@@ -160,19 +242,12 @@ class Morpher
 					if(location.href === url)
 					{
 						this.morph(response);
-						this.loaderTimeouts.forEach(clearTimeout);
-						this.loaderTimeouts.length = 0;
 						setTimeout(() => requestAnimationFrame(() => window.scroll(0, 0)));
 					}
 				}
 				catch (e) {}
-				this.loaderTimeouts.push(
-					setTimeout(() => requestAnimationFrame(() => {
-						this.loader.style.transition = "all 1s";
-						this.loader.style.transform = "scaleX(1)";
-						this.loader.style.opacity = "0";
-					}), 100),
-				)
+
+				LoadingIndicator.EndLoading();
 			})
 
 			element.addEventListener("pointerenter", () => {
@@ -180,6 +255,7 @@ class Morpher
 					this.preloadImages(r);
 				})
 			})
+
 			element.hasSPAEventAdded = true;
 		}
 	}
@@ -233,15 +309,8 @@ class Morpher
 
 		this.mutationObserver.observe(document.body, { childList: true, subtree: true });
 
-		for(const link of document.getElementsByTagName("a"))
-		{
-			this.registerLink(link);
-		}
-
-		for(const link of document.body.shadowRoot.querySelectorAll("a"))
-		{
-			this.registerLink(link);
-		}
+		for(const link of document.getElementsByTagName("a")) this.registerLink(link);
+		for(const link of document.body.shadowRoot.querySelectorAll("a")) this.registerLink(link);
 
 		window.addEventListener("popstate", async (event) => {
 			event.preventDefault()
@@ -249,8 +318,6 @@ class Morpher
 			const response = await this.getFromCache(url);
 			this.morph(response);
 		});
-
-		this.loader = document.body.shadowRoot.getElementById("loader");
 	}
 
 	morph(result)
@@ -258,9 +325,11 @@ class Morpher
 		const template = document.createElement("template");
 		template.innerHTML = result;
 		const main = template.content.querySelector("[slot=main]");
+		const header = template.content.querySelector("[slot=header]");
 		if(main)
 		{
 			Idiomorph.morph(document.querySelector("[slot=main]"), main);
+			Idiomorph.morph(document.querySelector("[slot=header]"), header);
 		}
 	}
 }
@@ -354,38 +423,49 @@ class SearchElement extends HTMLElement
 	}
 }
 
-if(!customElements.get("product-search")) customElements.define("product-search", SearchElement);
-
-class CartManager
+class OptimisticCartAdder extends HTMLElement
 {
-	localCart;
+	form;
 
-	addOptimisticCartLine()
+	increment()
 	{
-
+		const indicator = document.body.querySelector("#cart-indicator");
+		if(!indicator) return;
+		indicator.innerHTML = String(parseInt(indicator.innerHTML) + 1);
 	}
 
-	removeOptimisticCartLine()
+	decrement()
 	{
-
+		const indicator = document.body.querySelector("#cart-indicator");
+		if(!indicator) return;
+		indicator.innerHTML = String(Math.max(0, Number(indicator.innerHTML) - 1));
 	}
 
-	modifyOptimisticCartLine()
+	onSubmit = async (e) =>
 	{
-
+		e.preventDefault();
+		this.increment()
+		const fd = new FormData(this.form);
+		const res = await fetch("/cart/add", {
+			method: "POST",
+			body: fd,
+			headers: { 'x-wants-json': 'please' }
+		})
+		if(!res.ok) return this.decrement();
+		const cart = await res.json();
+		if(cart.error) this.decrement();
 	}
 
-	updateCartIndicator()
+	connectedCallback()
 	{
+		this.form = this.querySelector("form");
+		this.form.addEventListener("submit", this.onSubmit);
+	}
 
+	disconnectedCallback()
+	{
+		this.form.removeEventListener("submit", this.onSubmit);
 	}
 }
 
-/*
-	Cart flow
-	// post to /cart, will return a response with cart data
-	// intercept the response, make fetch request instead, and optimistically update the caert
-
- */
-
-const cart = new CartManager;
+if(!customElements.get("add-to-cart")) customElements.define("add-to-cart", OptimisticCartAdder);
