@@ -130,10 +130,11 @@ const Shell = (p: PropsWithChildren<{ meta: any, cart: Cart }>) => (
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>Hello world</title>
 			<link rel="stylesheet" href="/styles.css"/>
 			<script src="/client.js" type="module"></script>
 			<script src="/worker.js" type="module" defer></script>
+			<meta name="description" content="VanillaMaster is a vanilla Javascript clone of NextMaster."/>
+			{p.meta}
 		</head>
 		<body>
 			<template shadowrootmode="open">
@@ -243,6 +244,7 @@ export const CollectionPage = async (props: { collection: string }) => {
 	const { data } = await supabase.from("collections").select("*, categories:categories(*)").eq("slug", props.collection).single()
 	return (
 		<DefaultLayout>
+			<set-title title={`VanillaMaster | ${data.name}`} />
 			<div class="collection-page">
 				<div>
 					<h2>{data.name}</h2>
@@ -281,6 +283,7 @@ export const CategoryPage = async (props: { category: string }) => {
 
 	return (
 		<DefaultLayout>
+			<set-title title={`VanillaMaster | ${organizedData?.[0].name}`}/>
 			<div class="category-page">
 				{organizedData.map((subcollection: any) => (
 					<div class="category-wrapper">
@@ -288,7 +291,8 @@ export const CategoryPage = async (props: { category: string }) => {
 						<ul>
 							{subcollection.subcategories.map((subcategory: any) => (
 								<li>
-									<a preload class="hoverable" href={`/products/${props.category}/${subcategory.slug}`}>
+									<a preload class="hoverable"
+									   href={`/products/${props.category}/${subcategory.slug}`}>
 										<img loading={"lazy"} width={100} height={100} src={subcategory.image_url}
 											 alt={subcategory.name}/>
 										<p>{subcategory.name}</p>
@@ -311,6 +315,7 @@ export const SubcategoryPage = async (props: { subcategory: string }) => {
 	const products = await supabase.from("products").select("*").eq("subcategory_slug", props.subcategory)
 	return (
 		<DefaultLayout>
+			<set-title title={`VanillaMaster | ${props.subcategory}`}/>
 			<div className='subcategory-page'>
 				<div className="category-wrapper">
 					<ul>
@@ -340,10 +345,11 @@ export const ProductPage = async (props: { product: string }) => {
 	if(!product.data) return <DefaultLayout><h1>Product not found</h1></DefaultLayout>
 	return (
 		<DefaultLayout>
+			<set-title title={`VanillaMaster | ${product.data.name}`}/>
 			<section class="product-page">
 				<h1 class="title">{product?.data?.name}</h1>
 				<div class="image-description">
-					<img width={350} height={350} src={product.data.image_url} loading="eager" />
+					<img width={350} height={350} src={product.data.image_url} loading="eager"/>
 					<p>{product.data.description}</p>
 				</div>
 				<p class="price">${product.data.price}</p>
@@ -359,7 +365,8 @@ export const ProductPage = async (props: { product: string }) => {
 						{relatedProducts.data?.map((product: any) => (
 							<li>
 								<a preload className="hoverable" href={`/product/${product.slug}`}>
-									<img loading={"eager"} width={100} height={100} src={product.image_url} alt={product.name}/>
+									<img loading={"eager"} width={100} height={100} src={product.image_url}
+										 alt={product.name}/>
 									<p>{product.name}</p>
 								</a>
 							</li>
@@ -421,7 +428,9 @@ async function CartPage(props: { cart: Cart })
 const app = new Hono();
 
 app.get("/", (c) => {
-	const meta = {}
+	const meta = <>
+		<title>VanillaMaster</title>
+	</>
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
 		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
@@ -430,7 +439,9 @@ app.get("/", (c) => {
 });
 
 app.get("/products/:category/:subcategory", (c) => {
-	const meta = {}
+	const meta = <>
+		<title>VanillaMaster | Products</title>
+	</>
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
 		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
@@ -440,7 +451,9 @@ app.get("/products/:category/:subcategory", (c) => {
 
 app.get("/products/:category", (c) =>
 {
-	const meta = {}
+	const meta = <>
+		<title>VanillaMaster | Products</title>
+	</>
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
 		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
@@ -450,7 +463,9 @@ app.get("/products/:category", (c) =>
 
 app.get("/collections/:collection", (c) =>
 {
-	const meta = {}
+	const meta = <>
+		<title>VanillaMaster | Products</title>
+	</>
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
 		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
@@ -460,7 +475,9 @@ app.get("/collections/:collection", (c) =>
 
 app.get("/product/:product", (c) =>
 {
-	const meta = {}
+	const meta = <>
+		<title>VanillaMaster | Product</title>
+	</>
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
 		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));
@@ -526,7 +543,9 @@ app.get("/cart", (c) => {
 	const cart = getCookie(c, 'cart')
 	if(!cart) setCookie(c, "cart", "")
 	const cartObj = new Cart().parse(cart)
-	const meta = {}
+	const meta = <>
+		<title>VanillaMaster | Cart</title>
+	</>
 	return stream(c, async s => {
 		s.write("<!DOCTYPE html>");
 		s.write(await render(c, <Shell cart={Cart.FromContext(c)} meta={meta}></Shell>));

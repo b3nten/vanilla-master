@@ -325,11 +325,9 @@ class Morpher
 		const template = document.createElement("template");
 		template.innerHTML = result;
 		const main = template.content.querySelector("[slot=main]");
-		const header = template.content.querySelector("[slot=header]");
 		if(main)
 		{
-			Idiomorph.morph(document.querySelector("[slot=main]"), main);
-			Idiomorph.morph(document.querySelector("[slot=header]"), header);
+			Idiomorph.morph(document.querySelector("[slot=main]"), main, );
 		}
 	}
 }
@@ -423,6 +421,8 @@ class SearchElement extends HTMLElement
 	}
 }
 
+if(!customElements.get("product-search")) customElements.define("product-search", SearchElement);
+
 class OptimisticCartAdder extends HTMLElement
 {
 	form;
@@ -469,3 +469,17 @@ class OptimisticCartAdder extends HTMLElement
 }
 
 if(!customElements.get("add-to-cart")) customElements.define("add-to-cart", OptimisticCartAdder);
+
+export class SetTitle extends HTMLElement
+{
+	static observedAttributes = ['title'];
+
+	attributeChangedCallback(name, oldValue, newValue) {
+		if(name === "title")
+		{
+			document.title = newValue;
+		}
+	}
+}
+
+if(!customElements.get("set-title")) customElements.define("set-title", SetTitle);
